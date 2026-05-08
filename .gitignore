@@ -3,3 +3,5 @@
 .venv/
 .vscode/
 src/web_photo/wifi_secrets.h
+src/mosaic_reader/wifi_secrets.h
+src/mosaic_reader_v2/wifi_secrets.h

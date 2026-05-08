@@ -7,7 +7,7 @@ param(
 
   [string[]]$Ports = @("COM7", "COM3", "COM4"),
 
-  [ValidateSet("diagnostic", "web_photo")]
+  [ValidateSet("diagnostic", "web_photo", "mosaic_reader", "mosaic_reader_v2")]
   [string]$Environment = "web_photo"
 )
 

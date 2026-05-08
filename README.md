@@ -1,11 +1,17 @@
 # ESP32-CAM AI Thinker
 
-Проект содержит две отдельные прошивки PlatformIO для AI Thinker ESP32-CAM с
+Проект содержит четыре отдельные прошивки PlatformIO для AI Thinker ESP32-CAM с
 камерой OV2640:
 
 - `diagnostic`: диагностика платы, камеры и PSRAM через Serial, без Wi-Fi.
 - `web_photo`: Wi-Fi веб-интерфейс с live-view через JPEG polling, настройками
   камеры, сохранением настроек и сбросом к defaults.
+- `mosaic_reader`: Wi-Fi интерфейс настройки для распознавания 4x3 мозаики.
+  ESP32 берет raw RGB565 кадр, стабилизирует автоэкспозицию warm-up кадрами,
+  семплит 12 точек по настраиваемой сетке и сам определяет `yellow`, `green`,
+  `blue` или `white` по нормализованному цвету.
+- `mosaic_reader_v2`: single-shot detector для робота. ESP32 сам ищет мозаику
+  на одном RGB565 кадре и возвращает 12 цветов в режиме best-effort.
 
 English version: [README.en.md](README.en.md)
 
@@ -75,6 +81,30 @@ PlatformIO и esptool используются из локальной `.venv`. 
 .\esp32cam.cmd upload -Port COM7 -Environment web_photo
 ```
 
+Собрать прошивку распознавания мозаики:
+
+```powershell
+.\esp32cam.cmd build -Environment mosaic_reader
+```
+
+Залить прошивку распознавания мозаики:
+
+```powershell
+.\esp32cam.cmd upload -Port COM7 -Environment mosaic_reader
+```
+
+Собрать v2 single-shot detector:
+
+```powershell
+.\esp32cam.cmd build -Environment mosaic_reader_v2
+```
+
+Залить v2 single-shot detector:
+
+```powershell
+.\esp32cam.cmd upload -Port COM7 -Environment mosaic_reader_v2
+```
+
 Открыть serial monitor:
 
 ```powershell
@@ -117,6 +147,84 @@ mirror, flip, lens correction и warm-up frame discard. Live-view стартуе
 Если PSRAM не работает, web-прошивка использует один frame buffer в DRAM.
 Практичные режимы для такой платы обычно `QQVGA` и `QVGA`; `VGA` доступен в UI,
 но может вернуть HTTP 503 при нехватке памяти.
+
+## Mosaic Reader
+
+![Mosaic Reader UI](docs/mosaic-reader.png)
+
+Скриншот показывает setup UI основной прошивки: слева raw RGB565 кадр с
+настроенной сеткой, справа результат 3x4, confidence, warm-up и калибровка
+цветов. В UI двигаются углы сетки `1`, `4`, `9`, `12`; остальные 8 точек
+рассчитываются автоматически как ровная 4x3 сетка.
+
+`mosaic_reader` подключается к Wi-Fi и поднимает setup UI на порту `80`.
+Перед сборкой скопируй пример секретов:
+
+```powershell
+Copy-Item src\mosaic_reader\wifi_secrets.example.h src\mosaic_reader\wifi_secrets.h
+```
+
+Затем заполни `WIFI_SSID` и `WIFI_PASSWORD` в
+`src\mosaic_reader\wifi_secrets.h`. Файл игнорируется git.
+
+Endpoints:
+
+- `GET /`: setup UI с raw RGB565 preview, красной сеткой, угловыми handles,
+  калибровкой, warm-up настройкой и таблицей результата 3x4.
+- `GET /frame?res=qqvga|qvga&radius=0..10&warmup=0..8`: один RGB565 кадр;
+  ESP32 выбрасывает warm-up/stale кадры, распознает 12 точек и возвращает raw
+  bytes плюс headers с width/height/result.
+- `GET /result?res=qqvga|qvga&radius=0..10&warmup=0..8`: захват кадра без
+  картинки, только JSON результата.
+- `GET /status`: IP, камера, PSRAM, resolution, radius, warm-up, counters,
+  точки, calibration status и last result.
+- `POST /points`: сохранить 12 нормализованных координат точек в NVS. UI обычно
+  отправляет сетку, рассчитанную из 4 углов.
+- `POST /calibrate?point=0..11&color=yellow|green|blue|white`: взять sample из
+  выбранной точки и сохранить калибровку цвета.
+- `POST /settings/reset`: сбросить точки, radius, warm-up, resolution и
+  calibration.
+
+Распознавание:
+
+- sample берется как небольшая область вокруг точки; почти черные пиксели
+  рамки игнорируются, чтобы попадание на край ячейки не портило средний цвет;
+- классификация идет по нормализованным долям `R/(R+G+B)`, `G/(R+G+B)`,
+  `B/(R+G+B)`, поэтому результат меньше зависит от общей яркости;
+- `Warm-up frames` по умолчанию `4`: это помогает AWB/AEC/AGC камеры
+  стабилизироваться перед рабочим кадром.
+
+Браузер не распознает цвета. Он только показывает raw кадр и отправляет
+перемещения/калибровку; расчет остается на ESP32, чтобы позже тот же результат
+можно было отдать через I2C.
+
+## Mosaic Reader v2
+
+`mosaic_reader_v2` рассчитан на роботный сценарий: один запрос делает один
+кадр, ищет мозаику заново и возвращает 12 цветов. Tracking и маркеры не
+используются.
+
+Перед сборкой для своей сети:
+
+```powershell
+Copy-Item src\mosaic_reader_v2\wifi_secrets.example.h src\mosaic_reader_v2\wifi_secrets.h
+```
+
+Endpoints:
+
+- `GET /`: debug/setup UI с raw RGB565 кадром, найденной сеткой, 4 начальными
+  углами модели и таблицей результата.
+- `GET /frame`: один RGB565 кадр плюс `X-Mosaic-Result` header для UI.
+- `GET /result`: runtime JSON для робота: `status`, `found`, `confidence`,
+  `pattern`, `corners`, `points`.
+- `POST /model`: сохранить 4 начальных угла области поиска.
+- `POST /calibrate?cell=0..11&color=yellow|green|blue|white`: обновить
+  calibration по выбранной ячейке.
+- `POST /settings/reset`: сбросить модель и calibration.
+
+Если detector не уверен, он все равно возвращает 12 цветов со
+`status: "best_effort"` и низким `confidence`. HTTP 503 остается только для
+реальных ошибок камеры/capture.
 
 ## Железо и ограничения
 
