@@ -1,0 +1,5 @@
+.pio/
+.platformio/
+.venv/
+.vscode/
+src/web_photo/wifi_secrets.h
