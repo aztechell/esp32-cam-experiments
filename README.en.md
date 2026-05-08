@@ -11,9 +11,31 @@ AI Thinker ESP32-CAM with an OV2640 camera:
 
 ## Local Setup
 
-PlatformIO and esptool are installed locally in `.venv`. PlatformIO uses the
-local `.platformio` directory, so the project does not need to write
-dependencies into the user's home directory.
+Python 3 and Git are required. Check that both are available:
+
+```powershell
+python --version
+git --version
+```
+
+Create a local virtual environment and install the tools:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install platformio esptool
+```
+
+Check PlatformIO:
+
+```powershell
+.\.venv\Scripts\pio.exe --version
+```
+
+PlatformIO and esptool are used from the local `.venv`. PlatformIO stores its
+packages in the local `.platformio` directory, so the project does not need to
+write dependencies into the user's home directory. `.venv`, `.platformio`, and
+`.pio` are not committed.
 
 Build the diagnostic firmware:
 

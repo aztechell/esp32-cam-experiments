@@ -11,9 +11,31 @@ English version: [README.en.md](README.en.md)
 
 ## Локальная среда
 
-PlatformIO и esptool установлены локально в `.venv`. PlatformIO использует
-локальную папку `.platformio`, поэтому проект не должен писать зависимости в
-домашнюю директорию пользователя.
+Нужны Python 3 и Git. Проверить их наличие:
+
+```powershell
+python --version
+git --version
+```
+
+Создать локальное виртуальное окружение и поставить инструменты:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install platformio esptool
+```
+
+Проверить PlatformIO:
+
+```powershell
+.\.venv\Scripts\pio.exe --version
+```
+
+PlatformIO и esptool используются из локальной `.venv`. PlatformIO складывает
+свои пакеты в локальную `.platformio`, поэтому проект не должен писать
+зависимости в домашнюю директорию пользователя. `.venv`, `.platformio` и `.pio`
+не коммитятся.
 
 Собрать диагностическую прошивку:
 
