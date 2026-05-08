@@ -2,6 +2,8 @@
 
 Russian version: [README.md](README.md)
 
+![Web UI](docs/web-ui.png)
+
 This project contains two separate PlatformIO firmware environments for an
 AI Thinker ESP32-CAM with an OV2640 camera:
 
@@ -118,6 +120,20 @@ the controls, and writes NVS only when a setting actually changes.
 If PSRAM does not work, the web firmware uses one frame buffer in DRAM. The
 practical modes for this board are usually `QQVGA` and `QVGA`; `VGA` is exposed
 in the UI, but may return HTTP 503 if there is not enough memory.
+
+## Hardware and Limitations
+
+Tested with an AI Thinker ESP32-CAM with OV2640 and a CH340 USB-UART adapter.
+The working port for this setup was `COM7`.
+
+Important limitations:
+
+- many ESP32-CAM clone boards look like AI Thinker modules, but PSRAM may be
+  missing or broken;
+- without working PSRAM, prefer `QQVGA` or `QVGA`;
+- `VGA` is exposed for testing, but may fail with HTTP 503 without PSRAM;
+- live view uses JPEG polling so camera settings remain responsive even without
+  PSRAM.
 
 ## Bootloader Mode
 

@@ -9,6 +9,8 @@
 
 English version: [README.en.md](README.en.md)
 
+![Web UI](docs/web-ui.png)
+
 ## Локальная среда
 
 Нужны Python 3 и Git. Проверить их наличие:
@@ -115,6 +117,20 @@ mirror, flip, lens correction и warm-up frame discard. Live-view стартуе
 Если PSRAM не работает, web-прошивка использует один frame buffer в DRAM.
 Практичные режимы для такой платы обычно `QQVGA` и `QVGA`; `VGA` доступен в UI,
 но может вернуть HTTP 503 при нехватке памяти.
+
+## Железо и ограничения
+
+Проверялось на AI Thinker ESP32-CAM с OV2640 и USB-UART адаптером CH340.
+Рабочий порт в этой сборке был `COM7`.
+
+Важные ограничения:
+
+- многие китайские ESP32-CAM выглядят как AI Thinker, но PSRAM может не работать
+  или отсутствовать;
+- без рабочей PSRAM лучше использовать `QQVGA` или `QVGA`;
+- `VGA` доступен для проверки, но без PSRAM может падать с HTTP 503;
+- web-стрим сделан через JPEG polling, чтобы настройки оставались отзывчивыми
+  даже без PSRAM.
 
 ## Bootloader Mode
 
