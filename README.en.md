@@ -4,29 +4,37 @@ Russian version: [README.md](README.md)
 
 ![Web UI](docs/web-ui.png)
 
-This project contains four separate PlatformIO firmware environments for an
-AI Thinker ESP32-CAM with an OV2640 camera:
+A set of firmware experiments for the AI Thinker ESP32-CAM with an OV2640
+camera. The project started as a quick board/camera check and grew into a few
+separate modes: web preview, manual mosaic reading, and an automatic
+single-shot reader for robot use.
 
-- `diagnostic`: serial-only board, camera, and PSRAM diagnostics, no Wi-Fi.
-- `web_photo`: Wi-Fi web UI with JPEG-polling live view, camera controls,
-  saved settings, and reset-to-defaults.
-- `mosaic_reader`: Wi-Fi setup UI for a 4x3 mosaic reader. The ESP32 captures
-  raw RGB565 frames, stabilizes camera auto modes with warm-up frames, samples
-  12 points on an adjustable grid, and classifies yellow, green, blue, or white
-  on-device using normalized color.
-- `mosaic_reader_v2`: single-shot robot detector. The ESP32 searches for the
-  mosaic in one RGB565 frame and returns 12 best-effort colors.
+## What's Included
 
-## Local Setup
+- `diagnostic`: minimal serial diagnostics for the board, camera, and PSRAM. No
+  Wi-Fi.
+- `web_photo`: Wi-Fi web UI with JPEG-polling live view, camera controls, saved
+  NVS settings, and reset-to-defaults.
+- `mosaic_reader`: manual 4x3 mosaic setup. The ESP32 captures raw RGB565,
+  lets AWB/AEC/AGC settle with warm-up frames, samples 12 configured points, and
+  classifies `yellow`, `green`, `blue`, or `white` on-device.
+- `mosaic_reader_v2`: single-shot robot detector. One HTTP request captures one
+  frame, finds the mosaic, and returns 12 colors.
 
-Python 3 and Git are required. Check that both are available:
+All firmware variants live in one PlatformIO project, but each one is built as
+its own environment. They are isolated by `build_src_filter` and do not compile
+together.
+
+## Quick Start
+
+Python 3 and Git are required:
 
 ```powershell
 python --version
 git --version
 ```
 
-Create a local virtual environment and install the tools:
+Install PlatformIO and esptool locally:
 
 ```powershell
 python -m venv .venv
@@ -34,74 +42,44 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install platformio esptool
 ```
 
-Check PlatformIO:
+Check the install:
 
 ```powershell
 .\.venv\Scripts\pio.exe --version
 ```
 
-PlatformIO and esptool are used from the local `.venv`. PlatformIO stores its
-packages in the local `.platformio` directory, so the project does not need to
-write dependencies into the user's home directory. `.venv`, `.platformio`, and
-`.pio` are not committed.
+The project uses the local `.venv` and `.platformio` directories. Both are
+ignored by Git, so downloaded tools and packages do not end up in the repo.
 
-Build the diagnostic firmware:
+## Commands
 
-```powershell
-.\esp32cam.cmd build -Environment diagnostic
-```
-
-List currently openable serial ports:
+List available serial ports:
 
 ```powershell
 .\esp32cam.cmd ports
 ```
 
-Check the ESP32 port without flashing:
+Check that the ESP32 responds on a port:
 
 ```powershell
 .\esp32cam.cmd chip -Ports COM7
 ```
 
-Upload the diagnostic firmware:
+Build firmware:
 
 ```powershell
-.\esp32cam.cmd upload -Port COM7 -Environment diagnostic
-```
-
-Build the web firmware:
-
-```powershell
+.\esp32cam.cmd build -Environment diagnostic
 .\esp32cam.cmd build -Environment web_photo
-```
-
-Upload the web firmware:
-
-```powershell
-.\esp32cam.cmd upload -Port COM7 -Environment web_photo
-```
-
-Build the mosaic reader firmware:
-
-```powershell
 .\esp32cam.cmd build -Environment mosaic_reader
-```
-
-Upload the mosaic reader firmware:
-
-```powershell
-.\esp32cam.cmd upload -Port COM7 -Environment mosaic_reader
-```
-
-Build the v2 single-shot detector:
-
-```powershell
 .\esp32cam.cmd build -Environment mosaic_reader_v2
 ```
 
-Upload the v2 single-shot detector:
+Upload firmware:
 
 ```powershell
+.\esp32cam.cmd upload -Port COM7 -Environment diagnostic
+.\esp32cam.cmd upload -Port COM7 -Environment web_photo
+.\esp32cam.cmd upload -Port COM7 -Environment mosaic_reader
 .\esp32cam.cmd upload -Port COM7 -Environment mosaic_reader_v2
 ```
 
@@ -111,182 +89,30 @@ Open the serial monitor:
 .\esp32cam.cmd monitor -Port COM7
 ```
 
-## Web Firmware
+If upload does not start, put the board into bootloader mode: hold `BOOT` or
+connect `IO0` to `GND`, press `RST`, run upload, then release `BOOT` and press
+`RST` again.
 
-`web_photo` connects to the configured Wi-Fi network, prints its IP address to
-the serial monitor, and starts an HTTP server on port `80`.
+## Wi-Fi Secrets
 
-Before building for your own network, copy the secrets example:
+Wi-Fi firmware does not store real SSIDs or passwords in Git. Before building a
+Wi-Fi environment, copy the matching example:
 
 ```powershell
 Copy-Item src\web_photo\wifi_secrets.example.h src\web_photo\wifi_secrets.h
-```
-
-Then fill `WIFI_SSID` and `WIFI_PASSWORD` in
-`src\web_photo\wifi_secrets.h`. This file is listed in `.gitignore` and must not
-be committed.
-
-Endpoints:
-
-- `GET /`: web UI.
-- `GET /frame?res=qqvga|qvga|vga&fps=1|2|5|8|10`: one JPEG frame for the
-  live-view polling loop.
-- `GET` or `POST /capture?res=qqvga|qvga|vga`: compatibility alias for one
-  JPEG frame.
-- `GET /status`: JSON with IP, PSRAM, camera state, active/saved resolution,
-  frame count, saved sensor settings, and the last camera error.
-- `GET` or `POST /settings/reset`: reset saved web-firmware settings.
-
-The UI shows one live display and a camera settings panel: JPEG quality,
-brightness, contrast, saturation, sharpness, white balance, exposure, gain,
-mirror, flip, lens correction, and optional warm-up frame discard. Live view
-starts at `2 fps`; `1`, `5`, `8`, and `10 fps` can be selected without
-reflashing.
-
-`web_photo` settings are stored in ESP32 NVS/Preferences and restored after
-reboot. The UI reads `/status` before the first frame, applies saved values to
-the controls, and writes NVS only when a setting actually changes.
-
-If PSRAM does not work, the web firmware uses one frame buffer in DRAM. The
-practical modes for this board are usually `QQVGA` and `QVGA`; `VGA` is exposed
-in the UI, but may return HTTP 503 if there is not enough memory.
-
-## Mosaic Reader Firmware
-
-![Mosaic Reader UI](docs/mosaic-reader.png)
-
-The screenshot shows the setup UI for the main mosaic reader firmware: raw
-RGB565 frame with the configured grid on the left, 3x4 result, confidence,
-warm-up, and color calibration on the right. The UI moves the corner handles
-`1`, `4`, `9`, and `12`; the other 8 points are computed automatically as a
-straight 4x3 grid.
-
-`mosaic_reader` connects to Wi-Fi and starts a setup UI on port `80`. Copy
-`src\mosaic_reader\wifi_secrets.example.h` to
-`src\mosaic_reader\wifi_secrets.h` and fill in `WIFI_SSID` and
-`WIFI_PASSWORD` before building for your network.
-
-Endpoints:
-
-- `GET /`: setup UI with raw RGB565 preview, red overlay grid, corner handles,
-  calibration controls, warm-up setting, and a 3x4 result table.
-- `GET /frame?res=qqvga|qvga&radius=0..10&warmup=0..8`: captures one RGB565
-  frame, discards warm-up/stale frames, recognizes the 12 points on the ESP32,
-  returns raw frame bytes, and includes width, height, and result headers.
-- `GET /result?res=qqvga|qvga&radius=0..10&warmup=0..8`: captures and returns
-  only JSON recognition output.
-- `GET /status`: IP, camera, PSRAM, resolution, radius, warm-up, counters,
-  points, calibration status, and last result.
-- `POST /points`: saves 12 normalized point coordinates in ESP32 NVS. The UI
-  usually sends the grid computed from the 4 corner handles.
-- `POST /calibrate?point=0..11&color=yellow|green|blue|white`: samples the
-  selected point and stores that color calibration in NVS.
-- `POST /settings/reset`: restores default points, sample radius, warm-up,
-  resolution, and default calibration samples.
-
-Recognition behavior:
-
-- each sample is averaged over a small area around the point; near-black frame
-  pixels are ignored so a slight hit on the cell border does not poison the
-  average;
-- classification uses normalized ratios `R/(R+G+B)`, `G/(R+G+B)`,
-  `B/(R+G+B)`, which makes the result less sensitive to overall brightness;
-- `Warm-up frames` defaults to `4`, giving AWB/AEC/AGC time to settle before
-  the working frame is analyzed.
-
-The browser does not classify colors. It only displays the raw frame and sends
-calibration/point changes; recognition happens on the ESP32 so the result path
-can later be reused for I2C output.
-
-## Mosaic Reader v2
-
-`mosaic_reader_v2` is for the robot flow: one request captures one frame,
-searches for the mosaic from scratch, and returns 12 colors. It does not use
-tracking or physical markers.
-
-![Mosaic Reader v2 UI](docs/mosaic-reader-v2.png)
-
-Current detector flow:
-
-- the ESP32 captures one `QQVGA RGB565` frame in DRAM and recognizes on-device;
-- colored/white cell blob candidates are extracted first;
-- if those blobs form a stable 4x3 lattice, the result uses
-  `source: "blob_lattice"`;
-- if blobs are incomplete or noisy, the firmware falls back to a full-frame grid
-  search using dark separator lines and colored/white cell centers:
-  `source: "grid_search"`;
-- the detected grid can be projective, so the overlay and sampling points are
-  not limited to a simple affine grid;
-- color classification uses saved calibration samples for `yellow`, `green`,
-  `blue`, and `white` in ESP32 NVS.
-
-Before building for your network:
-
-```powershell
+Copy-Item src\mosaic_reader\wifi_secrets.example.h src\mosaic_reader\wifi_secrets.h
 Copy-Item src\mosaic_reader_v2\wifi_secrets.example.h src\mosaic_reader_v2\wifi_secrets.h
 ```
 
-Endpoints:
+Fill `WIFI_SSID` and `WIFI_PASSWORD` in the needed `wifi_secrets.h`. These files
+are ignored by Git.
 
-- `GET /`: debug/setup UI with raw RGB565 preview, detected grid, matched blob
-  overlay, and a 3x4 result table.
-- `GET /preview`: fast raw RGB565 frame without recognition, used only for
-  aiming the camera.
-- `GET /frame`: one RGB565 frame with full recognition. The image is returned in
-  the body, and the UI reads the full result from `/status` to avoid oversized
-  HTTP headers on the ESP32.
-- `GET /result`: runtime JSON for the robot: `status`, `found`, `confidence`,
-  `source`, `pattern`, `corners`, `grid`, `points`.
-- `GET /status`: camera state, counters, calibration, and `last_result`.
-- `POST /model`: compatibility no-op; manual 4-corner models are disabled in v2.
-- `POST /calibrate?cell=0..11&color=yellow|green|blue|white`: update
-  calibration from the selected cell.
-- `POST /settings/reset`: reset calibration, warm-up, and detector state.
+## Diagnostic
 
-When the detector is uncertain, it still returns 12 colors with
-`status: "best_effort"` and low `confidence`. HTTP 503 is reserved for real
-camera/capture failures.
+`diagnostic` is the fastest way to check whether the board is alive and the
+camera is visible. It does not use Wi-Fi; all output goes to the serial monitor.
 
-Useful fields while tuning:
-
-- `source`: `blob_lattice` or `grid_search`;
-- `found`: geometry is considered reliable;
-- `complete`: all 12 sample points are in frame;
-- `confidence`: overall confidence;
-- `pattern`: 12 colors in row-major order, `r1c1..r3c4`;
-- `points[n].confidence`, `coverage`, `blob_match`, `rgb`: per-cell diagnostics.
-
-## Useful Links
-
-- [WRO 2026 Senior Randomizer](https://legorobot.com.tw/WRO2026-SeniorRandomizer/)
-  is useful for testing mosaic recognition against realistic randomized Senior
-  patterns.
-
-## Hardware and Limitations
-
-Tested with an AI Thinker ESP32-CAM with OV2640 and a CH340 USB-UART adapter.
-The working port for this setup was `COM7`.
-
-Important limitations:
-
-- many ESP32-CAM clone boards look like AI Thinker modules, but PSRAM may be
-  missing or broken;
-- without working PSRAM, prefer `QQVGA` or `QVGA`;
-- `VGA` is exposed for testing, but may fail with HTTP 503 without PSRAM;
-- live view uses JPEG polling so camera settings remain responsive even without
-  PSRAM.
-
-## Bootloader Mode
-
-If upload cannot connect, put the board into bootloader mode:
-
-1. Connect `IO0` to `GND` or hold `BOOT`.
-2. Press and release `RST`.
-3. Run the upload command.
-4. Disconnect `IO0` from `GND` or release `BOOT`.
-5. Press `RST` again to start the firmware.
-
-Successful diagnostic serial output should include:
+Successful output should include:
 
 ```text
 camera init ok
@@ -295,27 +121,165 @@ jpeg markers: ok
 probe done
 ```
 
-The diagnostic firmware also prints a heartbeat every 2 seconds:
+The firmware also prints a heartbeat every 2 seconds:
 
 ```text
 heartbeat: <ms> ms, camera: ready, count: <n>
 ```
 
+Diagnostics also report PSRAM state, free heap, the AI Thinker pin map, and the
+camera SCCB/I2C scan result.
+
+## Web Photo
+
+`web_photo` connects to Wi-Fi, prints its IP address to the serial monitor, and
+starts an HTTP server on port `80`.
+
+The UI has one live display and a camera settings panel: JPEG quality,
+brightness, contrast, saturation, sharpness, white balance, exposure, gain,
+mirror, flip, lens correction, and optional warm-up frame discard. Live view
+uses JPEG polling. The default is `2 fps`; `1`, `5`, `8`, and `10 fps` are also
+available.
+
+Settings are stored in ESP32 NVS/Preferences and restored after reboot. The UI
+reads `/status` first, applies saved values to the controls, and writes NVS only
+when a value actually changes.
+
+HTTP API:
+
+- `GET /`: web UI.
+- `GET /frame?res=qqvga|qvga|vga&fps=1|2|5|8|10`: one JPEG frame for live-view.
+- `GET` or `POST /capture?res=qqvga|qvga|vga`: compatibility alias for one JPEG
+  frame.
+- `GET /status`: IP, PSRAM, camera state, active and saved resolution, counters,
+  sensor settings, and the last error.
+- `GET` or `POST /settings/reset`: reset saved settings.
+
+If PSRAM does not work, the firmware uses one frame buffer in DRAM. `QQVGA` and
+`QVGA` are the practical modes for that setup. `VGA` is exposed for testing, but
+may return HTTP 503 without PSRAM.
+
+## Mosaic Reader
+
+![Mosaic Reader UI](docs/mosaic-reader.png)
+
+`mosaic_reader` is useful when the camera is mounted consistently and the grid
+can be configured once by hand. The UI moves corner handles `1`, `4`, `9`, and
+`12`; the other points are computed as a straight 4x3 grid. The browser only
+shows the raw frame and sends settings. Recognition runs on the ESP32.
+
+Firmware behavior:
+
+- captures raw `RGB565`;
+- discards warm-up/stale frames so auto exposure and white balance can settle;
+- samples a small patch around each of the 12 points;
+- ignores near-black frame pixels when a point lands close to a cell border;
+- classifies using normalized ratios `R/(R+G+B)`, `G/(R+G+B)`, `B/(R+G+B)`.
+
+HTTP API:
+
+- `GET /`: setup UI with raw RGB565 preview, grid, corner handles, calibration,
+  and a 3x4 result table.
+- `GET /frame?res=qqvga|qvga&radius=0..10&warmup=0..8`: one RGB565 frame plus
+  result headers.
+- `GET /result?res=qqvga|qvga&radius=0..10&warmup=0..8`: JSON result only.
+- `GET /status`: IP, camera, PSRAM, resolution, radius, warm-up, counters,
+  points, calibration status, and last result.
+- `POST /points`: save 12 normalized point coordinates in NVS.
+- `POST /calibrate?point=0..11&color=yellow|green|blue|white`: sample the
+  selected point and save calibration for that color.
+- `POST /settings/reset`: reset points, radius, warm-up, resolution, and
+  calibration.
+
+## Mosaic Reader v2
+
+![Mosaic Reader v2 UI](docs/mosaic-reader-v2.png)
+
+`mosaic_reader_v2` is built for the robot flow: the robot arrives at whatever
+pose it gets, the ESP32 captures one frame, finds the mosaic, and returns 12
+values. There is no tracking, no physical marker, and no manual 4-corner model.
+
+Current detector flow:
+
+- captures `QQVGA RGB565` in DRAM;
+- extracts colored and white cell blob candidates;
+- fits a 4x3 lattice from blobs when possible: `source: "blob_lattice"`;
+- falls back to a full-frame grid search using dark separator lines and
+  colored/white cell centers: `source: "grid_search"`;
+- uses a projective grid for rotated or perspective-distorted boards;
+- classifies colors from NVS calibration samples for `yellow`, `green`, `blue`,
+  and `white`.
+
+If the detector is uncertain, it still returns 12 colors with
+`status: "best_effort"` and low `confidence`. HTTP 503 is reserved for actual
+camera or capture failures.
+
+HTTP API:
+
+- `GET /`: debug UI with preview, detected grid, matched blob overlay, and a
+  result table.
+- `GET /preview`: fast raw RGB565 frame without recognition, used for aiming.
+- `GET /frame`: raw RGB565 frame with full recognition. The UI reads the full
+  result from `/status` to avoid oversized HTTP headers on the ESP32.
+- `GET /result`: runtime JSON for the robot: `status`, `found`, `confidence`,
+  `source`, `pattern`, `corners`, `grid`, `points`.
+- `GET /status`: camera state, counters, calibration, and `last_result`.
+- `POST /model`: compatibility no-op; manual models are disabled in v2.
+- `POST /calibrate?cell=0..11&color=yellow|green|blue|white`: update
+  calibration from the selected cell.
+- `POST /settings/reset`: reset calibration, warm-up, and detector state.
+
+Useful fields while tuning:
+
+- `source`: `blob_lattice` or `grid_search`.
+- `found`: geometry is considered reliable.
+- `complete`: all 12 sample points are inside the frame.
+- `confidence`: overall confidence.
+- `pattern`: 12 colors in row-major order, `r1c1..r3c4`.
+- `points[n].confidence`, `coverage`, `blob_match`, `rgb`: per-cell diagnostics.
+
+## Useful Links
+
+- [WRO 2026 Senior Randomizer](https://legorobot.com.tw/WRO2026-SeniorRandomizer/)
+  helps test recognition against realistic randomized Senior patterns.
+
+## Hardware and Limitations
+
+Tested with an AI Thinker ESP32-CAM with OV2640 and a CH340 USB-UART adapter.
+The working port for this setup was `COM7`.
+
+Things to keep in mind:
+
+- many ESP32-CAM clone boards look like AI Thinker modules, but PSRAM may be
+  missing or broken;
+- without working PSRAM, prefer `QQVGA` or `QVGA`;
+- `VGA` can be tested, but may fail with HTTP 503 without PSRAM;
+- live view uses polling so camera settings do not get blocked by a long MJPEG
+  loop.
+
 ## If The Monitor Is Empty
 
-First check the real openable port:
+First check the real port:
 
 ```powershell
 .\esp32cam.cmd ports
 ```
 
-For this board, the working port was `COM7`.
-
 If upload prints `Failed to connect to ESP32: No serial data received`:
 
 1. Hold `BOOT` or connect `IO0` to `GND`.
 2. Press and release `RST` while `BOOT/IO0` is active.
-3. Run `.\esp32cam.cmd upload -Port COM7 -Environment web_photo`.
+3. Run upload, for example:
+
+   ```powershell
+   .\esp32cam.cmd upload -Port COM7 -Environment web_photo
+   ```
+
 4. Release `BOOT` or disconnect `IO0-GND`.
-5. Open `.\esp32cam.cmd monitor -Port COM7`.
+5. Open the monitor:
+
+   ```powershell
+   .\esp32cam.cmd monitor -Port COM7
+   ```
+
 6. Press and release `RST`.
