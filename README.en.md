@@ -9,6 +9,8 @@ camera. The project started as a quick board/camera check and grew into a few
 separate modes: web preview, manual mosaic reading, and an automatic
 single-shot reader for robot use.
 
+The target mosaic is the 4x3 color mosaic from WRO RoboMission Senior 2026.
+
 ## What's Included
 
 - `diagnostic`: minimal serial diagnostics for the board, camera, and PSRAM. No
@@ -166,7 +168,8 @@ may return HTTP 503 without PSRAM.
 `mosaic_reader` is useful when the camera is mounted consistently and the grid
 can be configured once by hand. The UI moves corner handles `1`, `4`, `9`, and
 `12`; the other points are computed as a straight 4x3 grid. The browser only
-shows the raw frame and sends settings. Recognition runs on the ESP32.
+shows the raw frame and sends settings. Recognition runs on the ESP32. The
+target object is the WRO RoboMission Senior 2026 mosaic.
 
 Firmware behavior:
 
@@ -198,6 +201,7 @@ HTTP API:
 `mosaic_reader_v2` is built for the robot flow: the robot arrives at whatever
 pose it gets, the ESP32 captures one frame, finds the mosaic, and returns 12
 values. There is no tracking, no physical marker, and no manual 4-corner model.
+This is the main mode for reading the WRO RoboMission Senior 2026 mosaic.
 
 Current detector flow:
 
