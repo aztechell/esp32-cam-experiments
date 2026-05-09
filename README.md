@@ -204,6 +204,20 @@ Endpoints:
 кадр, ищет мозаику заново и возвращает 12 цветов. Tracking и маркеры не
 используются.
 
+![Mosaic Reader v2 UI](docs/mosaic-reader-v2.png)
+
+Текущая рабочая схема детектора:
+
+- ESP32 снимает `QQVGA RGB565` кадр в DRAM и выполняет распознавание на плате;
+- сначала ищутся цветные/белые blob-кандидаты ячеек;
+- если blob-и дают устойчивую 4x3 решетку, используется `source: "blob_lattice"`;
+- если blob-и неполные или шумные, включается full-frame поиск сетки по темным
+  линиям и цветным центрам: `source: "grid_search"`;
+- найденная сетка может быть projective, поэтому overlay и точки чтения цвета
+  не обязаны быть простой affine-сеткой;
+- цвет классифицируется по calibration samples `yellow`, `green`, `blue`,
+  `white`, сохраненным в ESP32 NVS.
+
 Перед сборкой для своей сети:
 
 ```powershell
@@ -212,19 +226,40 @@ Copy-Item src\mosaic_reader_v2\wifi_secrets.example.h src\mosaic_reader_v2\wifi_
 
 Endpoints:
 
-- `GET /`: debug/setup UI с raw RGB565 кадром, найденной сеткой, 4 начальными
-  углами модели и таблицей результата.
-- `GET /frame`: один RGB565 кадр плюс `X-Mosaic-Result` header для UI.
+- `GET /`: debug/setup UI с raw RGB565 preview, найденной сеткой, matched blob
+  overlay и таблицей результата 3x4.
+- `GET /preview`: быстрый raw RGB565 кадр без распознавания, только для
+  наведения камеры.
+- `GET /frame`: один RGB565 кадр с полным распознаванием. Картинка возвращается
+  body, а полный результат UI забирает через `/status`, чтобы не раздувать HTTP
+  headers на ESP32.
 - `GET /result`: runtime JSON для робота: `status`, `found`, `confidence`,
-  `pattern`, `corners`, `points`.
-- `POST /model`: сохранить 4 начальных угла области поиска.
+  `source`, `pattern`, `corners`, `grid`, `points`.
+- `GET /status`: состояние камеры, counters, calibration и `last_result`.
+- `POST /model`: compatibility no-op; ручная 4-corner модель отключена в v2.
 - `POST /calibrate?cell=0..11&color=yellow|green|blue|white`: обновить
   calibration по выбранной ячейке.
-- `POST /settings/reset`: сбросить модель и calibration.
+- `POST /settings/reset`: сбросить calibration, warm-up и detector state.
 
 Если detector не уверен, он все равно возвращает 12 цветов со
 `status: "best_effort"` и низким `confidence`. HTTP 503 остается только для
 реальных ошибок камеры/capture.
+
+Поля результата, на которые стоит смотреть при настройке:
+
+- `source`: `blob_lattice` или `grid_search`;
+- `found`: геометрия достаточно надежная;
+- `complete`: все 12 точек находятся в кадре;
+- `confidence`: общий уровень доверия;
+- `pattern`: 12 цветов row-major как `r1c1..r3c4`;
+- `points[n].confidence`, `coverage`, `blob_match`, `rgb`: диагностика каждой
+  ячейки.
+
+## Полезные ссылки
+
+- [WRO 2026 Senior Randomizer](https://legorobot.com.tw/WRO2026-SeniorRandomizer/)
+  — генератор случайных Senior-паттернов, удобен для проверки распознавания
+  мозаики на реальных комбинациях.
 
 ## Железо и ограничения
 

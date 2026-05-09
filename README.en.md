@@ -204,6 +204,22 @@ can later be reused for I2C output.
 searches for the mosaic from scratch, and returns 12 colors. It does not use
 tracking or physical markers.
 
+![Mosaic Reader v2 UI](docs/mosaic-reader-v2.png)
+
+Current detector flow:
+
+- the ESP32 captures one `QQVGA RGB565` frame in DRAM and recognizes on-device;
+- colored/white cell blob candidates are extracted first;
+- if those blobs form a stable 4x3 lattice, the result uses
+  `source: "blob_lattice"`;
+- if blobs are incomplete or noisy, the firmware falls back to a full-frame grid
+  search using dark separator lines and colored/white cell centers:
+  `source: "grid_search"`;
+- the detected grid can be projective, so the overlay and sampling points are
+  not limited to a simple affine grid;
+- color classification uses saved calibration samples for `yellow`, `green`,
+  `blue`, and `white` in ESP32 NVS.
+
 Before building for your network:
 
 ```powershell
@@ -212,19 +228,39 @@ Copy-Item src\mosaic_reader_v2\wifi_secrets.example.h src\mosaic_reader_v2\wifi_
 
 Endpoints:
 
-- `GET /`: debug/setup UI with raw RGB565 frame, detected grid, 4 initial model
-  corners, and result table.
-- `GET /frame`: one RGB565 frame plus an `X-Mosaic-Result` header for the UI.
+- `GET /`: debug/setup UI with raw RGB565 preview, detected grid, matched blob
+  overlay, and a 3x4 result table.
+- `GET /preview`: fast raw RGB565 frame without recognition, used only for
+  aiming the camera.
+- `GET /frame`: one RGB565 frame with full recognition. The image is returned in
+  the body, and the UI reads the full result from `/status` to avoid oversized
+  HTTP headers on the ESP32.
 - `GET /result`: runtime JSON for the robot: `status`, `found`, `confidence`,
-  `pattern`, `corners`, `points`.
-- `POST /model`: save the 4 initial search-area corners.
+  `source`, `pattern`, `corners`, `grid`, `points`.
+- `GET /status`: camera state, counters, calibration, and `last_result`.
+- `POST /model`: compatibility no-op; manual 4-corner models are disabled in v2.
 - `POST /calibrate?cell=0..11&color=yellow|green|blue|white`: update
   calibration from the selected cell.
-- `POST /settings/reset`: reset model and calibration.
+- `POST /settings/reset`: reset calibration, warm-up, and detector state.
 
 When the detector is uncertain, it still returns 12 colors with
 `status: "best_effort"` and low `confidence`. HTTP 503 is reserved for real
 camera/capture failures.
+
+Useful fields while tuning:
+
+- `source`: `blob_lattice` or `grid_search`;
+- `found`: geometry is considered reliable;
+- `complete`: all 12 sample points are in frame;
+- `confidence`: overall confidence;
+- `pattern`: 12 colors in row-major order, `r1c1..r3c4`;
+- `points[n].confidence`, `coverage`, `blob_match`, `rgb`: per-cell diagnostics.
+
+## Useful Links
+
+- [WRO 2026 Senior Randomizer](https://legorobot.com.tw/WRO2026-SeniorRandomizer/)
+  is useful for testing mosaic recognition against realistic randomized Senior
+  patterns.
 
 ## Hardware and Limitations
 
